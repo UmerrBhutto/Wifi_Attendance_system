@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#0f1117; --surface:#1a1d27; --border:#2a2d3a;
+      --accent:#4f8ef7; --green:#22c55e; --yellow:#f59e0b;
+      --red:#ef4444; --text:#e2e8f0; --muted:#64748b; --radius:12px;
+    }
+    body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; padding:24px; }
+    .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; padding-bottom:20px; border-bottom:1px solid var(--border); }
+    .header h1 { font-size:1.5rem; font-weight:700; }
+    .header h1 span { color:var(--accent); }
+    .header p { color:var(--muted); font-size:0.85rem; margin-top:4px; }
+    .live-badge { display:flex; align-items:center; gap:8px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:var(--green); padding:6px 14px; border-radius:999px; font-size:0.8rem; font-weight:600; }
+    .live-dot { width:8px; height:8px; background:var(--green); border-radius:50%; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; position:relative; overflow:hidden; }
+    .stat-card::before { content:''; position:absolute; top:0;left:0;right:0; height:3px; }
+    .stat-card.present::before { background:var(--green); }
+    .stat-card.late::before    { background:var(--yellow); }
+    .stat-card.absent::before  { background:var(--red); }
+    .stat-label { font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:600; margin-bottom:8px; }
+    .stat-value { font-size:2.2rem; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; }
+    .stat-card.present .stat-value { color:var(--green); }
+    .stat-card.late    .stat-value { color:var(--yellow); }
+    .stat-card.absent  .stat-value { color:var(--red); }
+    .table-wrapper { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .table-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--border); }
+    .table-header h2 { font-size:1rem; font-weight:600; }
+    .last-updated { font-size:0.78rem; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+    table { width:100%; border-collapse:collapse; }
+    thead th { padding:12px 24px; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); font-weight:600; background:rgba(255,255,255,0.02); border-bottom:1px solid var(--border); }
+    tbody tr { border-bottom:1px solid var(--border); transition:background 0.15s; }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:rgba(255,255,255,0.03); }
+    td { padding:16px 24px; font-size:0.88rem; }
+    .emp-name { font-weight:600; font-size:0.95rem; }
+    .mono { font-family:'JetBrains Mono',monospace; font-size:0.88rem; }
+    .badge { display:inline-block; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:600; }
+    .badge-present { background:rgba(34,197,94,0.15); color:var(--green); }
+    .badge-late    { background:rgba(245,158,11,0.15); color:var(--yellow); }
+
+    /* ── Online/Offline indicator ── */
+    .status-indicator { display:inline-flex; align-items:center; gap:7px; font-size:0.82rem; font-family:'JetBrains Mono',monospace; }
+    .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .dot-green { background:var(--green); animation:pulse 1.5s infinite; }
+    .dot-red   { background:var(--red); }
+    .dot-red-pulse { background:var(--red); animation:pulse 1s infinite; }
+    .offline-text { color:var(--red); font-size:0.78rem; }
+    .online-text  { color:var(--green); }
+
+    .empty { text-align:center; padding:60px 24px; color:var(--muted); }
+    .empty p { margin-top:8px; font-size:0.85rem; }
+    .nav { margin-bottom:24px; }
+    .nav a { color:var(--accent); text-decoration:none; font-size:0.85rem; font-weight:500; margin-right:20px; padding-bottom:4px; border-bottom:2px solid transparent; }
+    .nav a.active { border-bottom-color:var(--accent); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>WiFi <span>Attendance</span></h1>
+      <p>{{ today }}</p>
+    </div>
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+  </div>
+
+  <nav class="nav">
+    <a href="/" class="active">Today</a>
+    <a href="/history">History</a>
+    <a href="/employees">Employees</a>
+  </nav>
+
+  <div class="stats">
+    <div class="stat-card present">
+      <div class="stat-label">Present</div>
+      <div class="stat-value" id="stat-present">{{ stats.present }}</div>
+    </div>
+    <div class="stat-card late">
+      <div class="stat-label">Late</div>
+      <div class="stat-value" id="stat-late">{{ stats.late }}</div>
+    </div>
+    <div class="stat-card absent">
+      <div class="stat-label">Absent</div>
+      <div class="stat-value" id="stat-absent">{{ stats.absent }}</div>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <div class="table-header">
+      <h2>Today's Attendance</h2>
+      <span class="last-updated" id="last-updated">{{ now_time }}</span>
+    </div>
+
+    <div id="table-body">
+      {% if records %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Check In</th>
+            <th>Last Seen</th>
+            <th>Check Out</th>
+            <th>Status</th>
+            <th>Late</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+          <tr>
+            <td class="mono" style="color:var(--muted)">{{ loop.index }}</td>
+            <td><div class="emp-name">{{ r.name }}</div></td>
+            <td class="mono">{{ r.check_in }}</td>
+            <td>
+              {% if r.online %}
+                <span class="status-indicator">
+                  <span class="dot dot-green"></span>
+                  <span class="online-text">{{ r.last_seen_time }}</span>
+                </span>
+              {% else %}
+                <span class="status-indicator">
+                  <span class="dot dot-red"></span>
+                  <span class="offline-text">{{ r.last_seen_time }} ({{ r.mins_offline }}m ago)</span>
+                </span>
+              {% endif %}
+            </td>
+            <td class="mono">
+              {{ r.check_out if r.check_out else '—' }}
+            </td>
+            <td><span class="badge badge-present">Present</span></td>
+            <td>
+              {% if r.status == 'Late' %}
+                <span class="badge badge-late">Late</span>
+              {% else %}
+                <span style="color:var(--muted);font-size:0.8rem">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">
+        <div style="font-size:2rem">📡</div>
+        <p>No attendance recorded yet today.</p>
+        <p>Make sure the scanner is running.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    function indicatorHtml(r) {
+      if (r.online) {
+        return `<span class="status-indicator">
+          <span class="dot dot-green"></span>
+          <span class="online-text">${r.last_seen_time}</span>
+        </span>`;
+      } else {
+        return `<span class="status-indicator">
+          <span class="dot dot-red"></span>
+          <span class="offline-text">${r.last_seen_time} (${r.mins_offline}m ago)</span>
+        </span>`;
+      }
+    }
+
+    async function refresh() {
+      try {
+        const res  = await fetch('/api/attendance');
+        const data = await res.json();
+        document.getElementById('stat-present').textContent = data.stats.present;
+        document.getElementById('stat-late').textContent    = data.stats.late;
+        document.getElementById('stat-absent').textContent  = data.stats.absent;
+        document.getElementById('last-updated').textContent = data.time;
+
+        if (data.records.length === 0) {
+          document.getElementById('table-body').innerHTML = `
+            <div class="empty"><div style="font-size:2rem">📡</div>
+            <p>No attendance recorded yet today.</p></div>`;
+          return;
+        }
+
+        let rows = data.records.map((r, i) => `
+          <tr>
+            <td class="mono" style="color:var(--muted)">${i+1}</td>
+            <td><div class="emp-name">${r.name}</div></td>
+            <td class="mono">${r.check_in}</td>
+            <td>${indicatorHtml(r)}</td>
+            <td class="mono">${r.check_out || '—'}</td>
+            <td><span class="badge badge-present">Present</span></td>
+            <td>${r.status === 'Late'
+              ? '<span class="badge badge-late">Late</span>'
+              : '<span style="color:var(--muted);font-size:0.8rem">—</span>'
+            }</td>
+          </tr>`).join('');
+
+        document.getElementById('table-body').innerHTML = `
+          <table><thead><tr>
+            <th>#</th><th>Name</th><th>Check In</th>
+            <th>Last Seen</th><th>Check Out</th><th>Status</th><th>Late</th>
+          </tr></thead><tbody>${rows}</tbody></table>`;
+      } catch(e) { console.error('Refresh failed', e); }
+    }
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>
